@@ -1,0 +1,978 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}img{max-width:100%}</style>
+</head>
+<body>
+<title>Shift Keying Lab — WCM555</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Interactive ASK, FSK, PSK and 16-QAM explorer for WCM555: waveforms, spectrum and bandwidth, and BER vs Eb/N0.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen instrument. Left rail of controls, one large stage that switches between three views,
+   a row of formula cards under it, and a status line at the bottom. */
+:root {
+  color-scheme: light;
+  --bg: #f7f8fa; --panel: #ffffff; --ink: #1f2933; --muted: #5f6b7a; --line: #e6e9ee; --grid: #f0f2f5;
+  --ask: #d9773a; --fsk: #2a9d8f; --psk: #3d6fd8; --qam: #b8478b; --noise: #b49ad6; --warn: #b7862a;
+  --f-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.5; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+.app { height: 100%; max-width: 1560px; margin: 0 auto; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.mono { font-family: var(--f-mono); }
+.cap { font-family: var(--f-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+
+/* top bar */
+.topbar { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 16px 0 12px; border-bottom: 1px solid var(--line); }
+.topbar h1 { margin: 0; font: 600 24px/1 var(--f-display); font-stretch: 88%; letter-spacing: -.01em; }
+.topbar h1 b { color: var(--psk); font-weight: 600; }
+
+.shell { display: grid; grid-template-columns: 276px minmax(0, 1fr); min-height: 0; }
+
+/* rail */
+.rail { overflow-y: auto; overflow-x: hidden; padding: 18px 22px 18px 0; border-right: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-content: start; }
+.sec { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13px; color: var(--ink); counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: baseline; counter-increment: s; }
+.steps li::before { content: counter(s); font: 500 11px var(--f-mono); width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; color: var(--muted); }
+.picks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.pick { font: inherit; text-align: left; padding: 8px 9px; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; cursor: pointer; display: grid; gap: 1px; color: var(--ink); }
+.pick[data-k="ASK"] { --c: var(--ask); } .pick[data-k="FSK"] { --c: var(--fsk); } .pick[data-k="PSK"] { --c: var(--psk); } .pick[data-k="QAM"] { --c: var(--qam); }
+.pick .n { font: 600 13px var(--f-mono); }
+.pick .s { font: 400 12px var(--f-mono); color: var(--muted); }
+.pick:hover { border-color: var(--c); }
+.pick[aria-pressed="true"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 9%, var(--panel)); }
+.pick[aria-pressed="true"] .n { color: var(--c); }
+.ctl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; min-width: 0; }
+.ctl .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ctl label { font-size: 13px; }
+.ctl output { font: 500 13px var(--f-mono); color: var(--psk); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hint { font-size: 12.5px; color: var(--muted); font-style: italic; overflow-wrap: anywhere; }
+input[type="range"] { width: 100%; accent-color: var(--psk); margin: 2px 0; }
+.bitsbox { display: flex; gap: 6px; min-width: 0; }
+.bitsbox input, .reader input { min-width: 0; font: 500 14px var(--f-mono); letter-spacing: .1em; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.bitsbox input { flex: 1 1 0; width: 0; }
+.bitsbox .btn { flex: none; }
+.btn { font: 500 12.5px var(--f-body); padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--psk); color: var(--psk); }
+.btn.solid { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.btn.solid:hover { background: var(--psk); border-color: var(--psk); color: var(--panel); }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.check input { accent-color: var(--psk); width: 16px; height: 16px; }
+.terms { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.terms b { color: var(--ink); font-weight: 600; }
+.fold { border-top: 1px solid var(--line); padding-top: 2px; }
+.fold summary { cursor: pointer; font: 500 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 10px 0; }
+.fold[open] summary { padding-bottom: 8px; }
+.fold .foldbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding-bottom: 6px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--psk); outline-offset: 2px; }
+
+/* main column */
+.main { min-width: 0; min-height: 0; overflow-y: auto; padding: 16px 0 16px 24px; display: flex; flex-direction: column; gap: 14px; }
+.sline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pill { font: 600 12px var(--f-mono); padding: 3px 12px; border-radius: 6px; border: 1px solid var(--c, var(--psk)); color: var(--c, var(--psk)); background: color-mix(in srgb, var(--c, var(--psk)) 8%, var(--panel)); }
+.sdesc { font-size: 13px; color: var(--muted); flex: 1 1 260px; min-width: 0; }
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.toggle button { font: 500 12px var(--f-mono); padding: 6px 12px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.toggle button + button { border-left: 1px solid var(--line); }
+.toggle button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+
+.stagehead { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+.stage { display: grid; gap: 12px; flex: none; }
+.stage.two { height: clamp(560px, calc(100vh - 250px), 720px); grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr); }
+.stage.one { height: 520px; grid-template-rows: minmax(0, 1fr); }
+.lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 36%); grid-template-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
+.lower[hidden] { display: none; }
+.stage canvas { width: 100%; height: 100%; min-height: 0; display: block; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.note b { color: var(--ink); font-family: var(--f-mono); font-weight: 500; }
+.note .warn { color: var(--warn); }
+
+.berextra { display: grid; gap: 8px; }
+.reader { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; }
+.reader input { width: 92px; letter-spacing: 0; font-size: 13px; padding: 4px 8px; }
+.tablewrap { overflow-x: auto; }
+table.cmp { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.cmp th, table.cmp td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+table.cmp th { font: 500 12px var(--f-mono); color: var(--muted); }
+table.cmp td.num { font-family: var(--f-mono); }
+.sw { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+
+details.work { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 0 16px; }
+details.work summary { cursor: pointer; padding: 11px 0; font: 500 12px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+details.work[open] summary { border-bottom: 1px solid var(--grid); }
+.eq .line { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+.eq .what { font-size: 12.5px; color: var(--muted); padding-top: 2px; }
+.eq .math { font: 13px var(--f-mono); overflow-x: auto; }
+.eq .res { color: var(--psk); font-weight: 600; }
+.assume { margin: 10px 0 14px; padding-left: 18px; display: grid; gap: 5px; font-size: 13px; color: var(--ink); }
+.assume li { max-width: 90ch; }
+
+/* footer + modal */
+.modal { position: fixed; inset: 0; background: rgba(31, 41, 51, .35); display: grid; place-items: center; padding: 20px; z-index: 50; }
+.sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; max-width: 640px; width: 100%; max-height: 86vh; overflow-y: auto; padding: 22px 26px; display: grid; gap: 12px; position: relative; }
+.sheet h2 { margin: 0; font: 600 18px var(--f-display); font-stretch: 90%; }
+.sheet h3 { margin: 8px 0 0; font: 500 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.sheet p { margin: 0; font-size: 13.5px; }
+.sheet .x { position: absolute; top: 12px; right: 14px; }
+
+/* narrow screens: stack and let the page scroll */
+@media (max-width: 1100px) { .shell { grid-template-columns: 250px minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  .app { height: auto; display: block; }
+  .shell { display: block; }
+  .rail { overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); padding: 18px 0; }
+  .main { overflow: visible; padding: 16px 0; }
+  .stage.two { height: auto; grid-template-rows: none; }
+  #cvTime { height: 420px; }
+  .lower { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  #cvSpec { height: 300px; } #cvConst { height: 340px; }
+  .stage.one { height: 440px; }
+}
+@media (max-width: 560px) { .eq .line { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+.who { display: flex; align-items: center; gap: 14px; }
+@media (max-width: 560px) { .topbar { flex-wrap: wrap; } .who { gap: 10px; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <h1>Shift Keying <b>Lab</b></h1>
+    <div class="who"><span class="cap">WCM555 · Saw Eaindray Thant</span><button class="btn" id="refsBtn" type="button">References</button></div>
+  </header>
+
+  <div class="shell">
+    <aside class="rail" aria-label="Controls">
+      <section class="sec">
+        <div class="cap">Scheme</div>
+        <div class="picks" id="picks" role="group" aria-label="Scheme">
+          <button type="button" class="pick" data-k="ASK"><span class="n">ASK</span><span class="s">amplitude</span></button>
+          <button type="button" class="pick" data-k="FSK"><span class="n">FSK</span><span class="s">frequency</span></button>
+          <button type="button" class="pick" data-k="PSK"><span class="n">PSK</span><span class="s">phase</span></button>
+          <button type="button" class="pick" data-k="QAM"><span class="n">16-QAM</span><span class="s">amp. + phase</span></button>
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="cap">Signal</div>
+        <div class="ctl">
+          <div class="row"><label for="bits">Bits</label></div>
+          <div class="bitsbox"><input id="bits" value="10100110" maxlength="16" inputmode="numeric" spellcheck="false" autocomplete="off"><button class="btn" id="rand" type="button">Random</button></div>
+          <span class="hint">16-QAM reads 4 bits at a time; short patterns are padded with 0s.</span>
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="rb">Bit rate R<sub>b</sub></label><output id="rbOut"></output></div>
+          <input type="range" id="rb" min="0.5" max="5" step="0.5" value="1">
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="cap">Channel</div>
+        <div class="ctl">
+          <div class="row"><label for="eb">E<sub>b</sub>/N<sub>0</sub> (signal quality)</label><output id="ebOut"></output></div>
+          <input type="range" id="eb" min="0" max="18" step="0.5" value="8">
+          <span class="hint">Higher means a cleaner signal, lower means more noise</span>
+        </div>
+        <label class="check"><input type="checkbox" id="showNoise"> Show the noise (waveforms, spectrum, I-Q)</label>
+      </section>
+
+      <section class="sec" id="playback">
+        <div class="cap">Playback</div>
+        <div class="ctl">
+          <div class="row"><label for="speed">Speed</label><output id="speedOut"></output></div>
+          <input type="range" id="speed" min="0.25" max="3" step="0.25" value="1">
+        </div>
+        <div class="pair"><button class="btn solid" id="playBtn" type="button">Pause</button><button class="btn" id="restartBtn" type="button">Restart</button></div>
+      </section>
+
+      <details class="fold">
+        <summary>More settings</summary>
+        <div class="foldbody">
+          <div class="ctl">
+            <div class="row"><label for="fc">Carrier f<sub>c</sub></label><output id="fcOut"></output></div>
+            <input type="range" id="fc" min="4" max="12" step="1" value="4">
+            <span class="hint" id="fcHint"></span>
+          </div>
+          <div class="ctl" id="fskRow">
+            <div class="row"><label for="dfn">FSK spacing f<sub>1</sub> − f<sub>0</sub></label><output id="dfOut"></output></div>
+            <input type="range" id="dfn" min="1" max="8" step="1" value="4">
+            <span class="hint" id="dfHint"></span>
+          </div>
+          <div class="ctl" id="askRow">
+            <div class="row"><label for="m">ASK modulation index m</label><output id="mOut"></output></div>
+            <input type="range" id="m" min="0.2" max="1" step="0.05" value="1">
+            <span class="hint">m = 1 is on-off keying (OOK)</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="fold">
+        <summary>What do these terms mean?</summary>
+        <div class="foldbody terms">
+          <span><b>Carrier</b>: the steady wave a radio changes to carry bits.</span>
+          <span><b>Bandwidth</b>: frequency space used (kHz). Less is better.</span>
+          <span><b>BER</b>: fraction of received bits that are wrong. Lower is better.</span>
+          <span><b>E<sub>b</sub>/N<sub>0</sub></b>: signal vs noise per bit (dB). Higher is cleaner.</span>
+        </div>
+      </details>
+    </aside>
+
+    <main class="main">
+      <div class="sline">
+        <span class="pill" id="pill"></span><span class="sdesc" id="sdesc"></span>
+        <div class="toggle" id="views" role="group" aria-label="View">
+          <button type="button" data-v="wave">Waveform + spectrum + I-Q</button><button type="button" data-v="ber">Bit errors</button>
+        </div>
+      </div>
+
+      <div class="stagehead"><span class="cap" id="stageTitle"></span></div>
+      <div class="stage two" id="stage">
+        <canvas id="cvTime" role="img" aria-label="Bit stream and the ASK, FSK, PSK and 16-QAM waveforms versus time"></canvas>
+        <div class="lower" id="lower"><canvas id="cvSpec" role="img" aria-label="Power spectrum of the selected scheme with bandwidth markers"></canvas><canvas id="cvConst" role="img" aria-label="I-Q constellation of the selected scheme with the symbols the receiver sees"></canvas></div>
+        <canvas id="cvBer" role="img" aria-label="Bit error rate versus Eb/N0 for ASK, FSK, PSK and 16-QAM" hidden></canvas>
+      </div>
+      <p class="note" id="stageNote"></p>
+
+      <div class="berextra" id="berExtra" hidden>
+        <div class="reader">
+          <label for="target">Read the plot at BER =</label><input id="target" value="4e-6" spellcheck="false">
+        </div>
+        <div class="tablewrap"><table class="cmp" id="cmp"></table></div>
+      </div>
+
+      <details class="work">
+        <summary>Equations with your numbers, and assumptions</summary>
+        <div class="eq" id="working"></div>
+        <ul class="assume">
+          <li>Carrier amplitude is 1 V into 1 Ω for every scheme. E<sub>b</sub> is the energy of one bit. ASK is compared at the same peak amplitude as the others, so on average on-off ASK uses half the energy per bit. That is why it sits about 3 dB behind FSK, the same gap the Lecture 7 graph shows. At equal average energy it would match FSK. PSK, FSK and 16-QAM use the same average power.</li>
+          <li>Noise is white Gaussian (AWGN) and the receiver is coherent: it knows the carrier frequency and phase exactly.</li>
+          <li>FSK tone spacing is a multiple of R<sub>b</sub>/2, so the two tones are orthogonal. PSK here is binary PSK: two phases, 0° and 180°. 16-QAM is Gray coded: 2 bits set the I level and 2 bits set the Q level.</li>
+          <li>Bits are rectangular pulses, so the spectrum is sinc-shaped. BW<sub>NOM</sub> is the main lobe, first null to first null. It holds about 90 % of the power for PSK and 16-QAM, and more for ASK and FSK. The spikes (carrier, FSK tones) are lines, so their height on the plot depends on how finely the spectrum is calculated.</li>
+          <li>The BER formulas and the definition of E<sub>b</sub>/N<sub>0</sub> are standard communications theory, not from the course slides, which only show BER graphs. The curves match the Lecture 7 graph values (slide 9).</li>
+          <li>The noise tick box adds noise to the waveforms, puts a white-noise floor (N<sub>0</sub>) on the spectrum, and scatters the I-Q constellation. The I-Q axes are normalised so that √E<sub>b</sub> = 1 (16-QAM: average symbol energy 1), and the receiver picks the nearest ideal symbol.</li>
+          <li>"BER simulated" sends 200 000 random bits through the noisy channel and counts the errors: BER = bit errors / total bits (Lecture 6).</li>
+        </ul>
+      </details>
+    </main>
+  </div>
+
+</div>
+
+<div class="modal" id="refs" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="refsT">
+    <button class="btn x" id="refsClose" type="button" aria-label="Close">Close</button>
+    <h2 id="refsT">References</h2>
+    <h3>Course material</h3>
+    <p>[1] C. Rodgers, "Digital Modulation," WCM555 Wireless Communications &amp; Microcontrollers, Handout 7, lecture slides.</p>
+    <p>[2] C. Rodgers, "Multi-level Coding &amp; Quadrature Amplitude Modulation (QAM)," WCM555, Handout 8, lecture slides.</p>
+    <p>[3] C. Rodgers, "SNR, Channel Capacity &amp; Bit Error Ratio (BER)," WCM555, Handout 6, lecture slides (BER = bit errors / total bits).</p>
+    <p class="hint">Used for: ASK/FSK/PSK definitions, BW<sub>NYQ</sub> and BW<sub>NOM</sub> formulas, FSK and PSK spectra, bits vs symbols and 16-QAM, and the BER vs E<sub>b</sub>/N<sub>0</sub> exercise on slide 9 (PSK 10 dB and FSK 13 dB for 4×10⁻⁶).</p>
+    <h3>AI tools used in development</h3>
+    <p>[4] Anthropic, "Claude," large language model used through Claude Code to help write the HTML, CSS and JavaScript for this tool: waveform generation, the spectrum calculation, the Q-function BER curves and the Monte Carlo simulation.</p>
+    <h3>Note on AI use</h3>
+    <p>This tool was built by Saw Eaindray Thant for the WCM555 Practice Tool Building Assignment. The code was generated and refined from student-directed prompts using Claude. The bit-rate and bandwidth equations come from the course material [1][2][3]. The BER formulas (the Q-function) come from standard AWGN detection theory, which is outside the course slides: the lectures only show BER graphs. The tool's numbers were checked against the slide 9 exercise answers and against its own bit-by-bit simulation, which agrees with the theory curves. All content has been reviewed by the student for correctness.</p>
+  </div>
+</div>
+
+<script>
+// ===== Shift Keying Lab: math core (ASK, FSK, PSK and 16-QAM) =====
+// Carrier amplitude A = 1 V into 1 ohm. Eb = (average power) x Tb, and PSK, FSK and 16-QAM all use 0.5 W average power.
+// ASK is referenced to its full amplitude (Eb = A^2 Tb / 2), so on average on-off keying uses half of that.
+
+// ---------- Gaussian tail ----------
+function erfc(x) {                       // Numerical Recipes erfcc, fractional error < 1.2e-7
+  const z = Math.abs(x), t = 1 / (1 + 0.5 * z);
+  const r = t * Math.exp(-z * z - 1.26551223 + t * (1.00002368 + t * (0.37409196 + t * (0.09678418 +
+    t * (-0.18628806 + t * (0.27886807 + t * (-1.13520398 + t * (1.48851587 +
+    t * (-0.82215223 + t * 0.17087277)))))))));
+  return x >= 0 ? r : 2 - r;
+}
+const Qf = x => 0.5 * erfc(x / Math.SQRT2);       // Q(x) = P(standard normal > x)
+const popcount = n => { let c = 0; while (n) { c += n & 1; n >>= 1; } return c; };
+
+// ---------- 16-QAM: Gray coded, 2 bits per axis, average symbol energy normalised to 1 ----------
+const GRAY2 = [0, 1, 3, 2];                       // level index 0..3 -> 2-bit Gray code
+const QAM_SC = 1 / Math.sqrt(10);                 // levels are -3,-1,+1,+3 times this
+const qamLevel = j => (2 * j - 3) * QAM_SC;
+function qamSymbol(v) {                           // v = 4 bits: high 2 bits set I, low 2 bits set Q
+  return { i: qamLevel(GRAY2.indexOf(v >> 2)), q: qamLevel(GRAY2.indexOf(v & 3)) };
+}
+function berQAM(g) {                              // exact bit error rate, Gray 16-QAM, g = Eb/N0 (ratio)
+  const sigma = Math.sqrt(1 / (2 * 4 * g));       // Es = 1, k = 4 bits per symbol
+  let tot = 0;
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    if (i === j) continue;
+    const xi = qamLevel(i), lo = j === 0 ? -Infinity : qamLevel(j) - QAM_SC, hi = j === 3 ? Infinity : qamLevel(j) + QAM_SC;
+    const P = (lo === -Infinity ? 1 : Qf((lo - xi) / sigma)) - (hi === Infinity ? 0 : Qf((hi - xi) / sigma));
+    tot += P * popcount(GRAY2[i] ^ GRAY2[j]);
+  }
+  return tot / 8;                                 // 4 levels x 2 bits per axis
+}
+
+// ---------- BER (coherent detection, AWGN) ----------
+// PSK: Pb = Q( sqrt(2 Eb/N0) )   FSK: Pb = Q( sqrt(Eb/N0) )   ASK (m = 1, OOK): Pb = Q( sqrt(Eb/(2 N0)) )
+// ASK with index m: Pb = Q( sqrt(2 Eb/N0) * m/(1+m) )          16-QAM: exact sum over decision steps (berQAM)
+function ber(kind, ebn0dB, m) {
+  const g = Math.pow(10, ebn0dB / 10);
+  if (kind === 'PSK') return Qf(Math.sqrt(2 * g));
+  if (kind === 'FSK') return Qf(Math.sqrt(g));
+  if (kind === 'QAM') return berQAM(g);
+  return Qf(Math.sqrt(2 * g) * m / (1 + m));
+}
+function requiredEbN0(kind, target, m) {          // smallest Eb/N0 (dB) giving BER <= target
+  let lo = -10, hi = 60;
+  if (ber(kind, hi, m) > target) return NaN;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (ber(kind, mid, m) > target) lo = mid; else hi = mid; }
+  return hi;
+}
+
+// ---------- bandwidth (Lectures 7 and 8) ----------
+// ASK, PSK: BW_NYQ = Rb, BW_NOM = 2 Rb.   FSK: BW_NYQ = (f1 - f0) + Rb, BW_NOM = (f1 - f0) + 2 Rb.
+// 16-QAM: 4 bits per symbol, so baud rate Rs = Rb/4 and BW_NYQ = Rs, BW_NOM = 2 Rs.
+function bandwidths(kind, Rb, df) {
+  if (kind === 'FSK') return { nyq: df + Rb, nom: df + 2 * Rb };
+  if (kind === 'QAM') return { nyq: Rb / 4, nom: Rb / 2 };
+  return { nyq: Rb, nom: 2 * Rb };
+}
+
+// ---------- random numbers ----------
+function makeRng(seed) {                          // mulberry32 + Box-Muller (repeatable)
+  let a = seed >>> 0;
+  const u = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  let spare = null;
+  const g = () => {
+    if (spare !== null) { const s = spare; spare = null; return s; }
+    let x; do { x = u(); } while (x <= 1e-300);
+    const r = Math.sqrt(-2 * Math.log(x)), th = 2 * Math.PI * u();
+    spare = r * Math.sin(th); return r * Math.cos(th);
+  };
+  return { u, g };
+}
+
+// ---------- Monte Carlo: BER = bit errors / total bits (Lecture 6). Returns the number of bit errors. ----------
+// Correlator outputs in signal space, scaled so that sqrt(Eb) = 1 for PSK/FSK/ASK; noise std per dimension = sqrt(N0/2).
+function simulate(kind, nBits, ebn0dB, m, rng) {
+  const g = Math.pow(10, ebn0dB / 10);
+  if (kind === 'QAM') {
+    const s = Math.sqrt(1 / (2 * 4 * g)), nSym = Math.floor(nBits / 4);
+    const slice = x => { const j = Math.round((x / QAM_SC + 3) / 2); return j < 0 ? 0 : j > 3 ? 3 : j; };
+    let err = 0;
+    for (let n = 0; n < nSym; n++) {
+      const v = Math.floor(rng.u() * 16), p = qamSymbol(v);
+      const vr = (GRAY2[slice(p.i + s * rng.g())] << 2) | GRAY2[slice(p.q + s * rng.g())];
+      err += popcount(v ^ vr);
+    }
+    return err;
+  }
+  const s = Math.sqrt(1 / (2 * g)), a0 = (1 - m) / (1 + m), th = (1 + a0) / 2;
+  let err = 0;
+  for (let i = 0; i < nBits; i++) {
+    const b = rng.u() < 0.5 ? 1 : 0;
+    let d;
+    if (kind === 'PSK') d = ((b ? 1 : -1) + s * rng.g()) > 0 ? 1 : 0;
+    else if (kind === 'FSK') { const r1 = (b ? 1 : 0) + s * rng.g(), r0 = (b ? 0 : 1) + s * rng.g(); d = r1 > r0 ? 1 : 0; }
+    else d = ((b ? 1 : a0) + s * rng.g()) > th ? 1 : 0;
+    if (d !== b) err++;
+  }
+  return err;
+}
+
+// ---------- waveforms ----------
+// p = { Rb, fc, df, m }. FSK: f0 = fc - df/2 (0), f1 = fc + df/2 (1). PSK: 1 -> 0 deg, 0 -> 180 deg.
+// ASK: 1 -> A, 0 -> A(1-m)/(1+m). 16-QAM: s(t) = I cos(wc t) - Q sin(wc t), one symbol per 4 bits (bits.length must be a multiple of 4).
+function amplitudeOf(kind, b, m) { return kind === 'ASK' ? (b ? 1 : (1 - m) / (1 + m)) : kind === 'PSK' ? (b ? 1 : -1) : 1; }
+function waveform(kind, bits, p, fs, noise, rngSeed) {
+  const Tb = 1 / p.Rb, N = Math.round(bits.length * Tb * fs);
+  const y = new Float32Array(N), clean = new Float32Array(N);
+  const wc = 2 * Math.PI * p.fc, w0 = 2 * Math.PI * (p.fc - p.df / 2), w1 = 2 * Math.PI * (p.fc + p.df / 2);
+  let L = 1, sc = 0, bI, bQ, aI = 0, aQ = 0, rng;
+  if (noise) {                                    // band-pass noise of power N0*Bn around fc
+    rng = makeRng(rngSeed);
+    L = Math.max(1, Math.round(fs / noise.Bn)); sc = Math.sqrt(noise.N0 * noise.Bn);
+    bI = new Float64Array(L); bQ = new Float64Array(L);
+    for (let i = 0; i < L; i++) { bI[i] = rng.g(); bQ[i] = rng.g(); aI += bI[i]; aQ += bQ[i]; }
+  }
+  const nSym = Math.floor(bits.length / 4);
+  for (let n = 0; n < N; n++) {
+    const t = n / fs;
+    let v;
+    if (kind === 'QAM') {
+      const s = Math.min(nSym - 1, Math.floor(t / (4 * Tb))), q = qamSymbol(bits[4 * s] * 8 + bits[4 * s + 1] * 4 + bits[4 * s + 2] * 2 + bits[4 * s + 3]);
+      v = q.i * Math.cos(wc * t) - q.q * Math.sin(wc * t);
+    } else {
+      const idx = Math.min(bits.length - 1, Math.floor(t / Tb)), b = bits[idx];
+      if (p.nReal !== undefined && idx >= p.nReal) v = 0;               // padding bits are not sent (only 16-QAM needs them)
+      else v = kind === 'FSK' ? Math.cos((b ? w1 : w0) * t) : amplitudeOf(kind, b, p.m) * Math.cos(wc * t);
+    }
+    clean[n] = v;
+    if (noise) {
+      const j = n % L, gi = rng.g(), gq = rng.g();
+      aI += gi - bI[j]; aQ += gq - bQ[j]; bI[j] = gi; bQ[j] = gq;
+      v += sc * (aI / Math.sqrt(L) * Math.cos(wc * t) - aQ / Math.sqrt(L) * Math.sin(wc * t));
+    }
+    y[n] = v;
+  }
+  return { y, clean, N };
+}
+
+// ---------- spectrum ----------
+function fft(re, im) {                            // in-place radix-2
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit;
+    if (i < j) { [re[i], re[j]] = [re[j], re[i]]; [im[i], im[j]] = [im[j], im[i]]; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = -2 * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang);
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let j = 0; j < len / 2; j++) {
+        const a = i + j, b = a + len / 2;
+        const xr = re[b] * cr - im[b] * ci, xi = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - xr; im[b] = im[a] - xi; re[a] += xr; im[a] += xi;
+        const t = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = t;
+      }
+    }
+  }
+}
+// PSD of the complex envelope x(t) for random data (Welch, Hann window). The real carrier Re{x e^{j 2 pi fc t}}
+// has one-sided PSD 0.5 [ Sx(f - fc) + Sx(-f - fc) ] in W/Hz.
+function envelopePSD(kind, p, seed) {
+  const rng = makeRng(seed), sr = kind === 'QAM' ? p.Rb / 4 : p.Rb;        // symbol rate
+  let fsb = 16 * sr; if (kind === 'FSK') fsb = Math.max(fsb, 4 * (p.df + 8 * p.Rb));
+  const spb = Math.max(8, Math.round(fsb / sr)); fsb = spb * sr;
+  let nfft = 1; while (nfft < 16 * spb) nfft <<= 1;
+  const nSym = Math.max(Math.ceil(8 * nfft / spb), Math.min(3000, Math.floor(400000 / spb)));
+  const N = nSym * spb, re = new Float64Array(N), im = new Float64Array(N);
+  for (let k = 0; k < nSym; k++) {
+    let a = 0, b2 = 0, v = 0;
+    if (kind === 'QAM') { const q = qamSymbol(Math.floor(rng.u() * 16)); a = q.i; b2 = q.q; }
+    else { v = rng.u() < 0.5 ? 1 : 0; if (kind !== 'FSK') a = amplitudeOf(kind, v, p.m); }
+    for (let n = k * spb; n < (k + 1) * spb; n++) {
+      if (kind === 'FSK') { const ph = (v ? 1 : -1) * Math.PI * p.df * n / fsb; re[n] = Math.cos(ph); im[n] = Math.sin(ph); }
+      else { re[n] = a; im[n] = b2; }
+    }
+  }
+  const w = new Float64Array(nfft); let U = 0;
+  for (let i = 0; i < nfft; i++) { w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / nfft); U += w[i] * w[i]; }
+  const S = new Float64Array(nfft), br = new Float64Array(nfft), bi = new Float64Array(nfft);
+  let segs = 0;
+  for (let st = 0; st + nfft <= N; st += nfft / 2) {
+    for (let i = 0; i < nfft; i++) { br[i] = re[st + i] * w[i]; bi[i] = im[st + i] * w[i]; }
+    fft(br, bi);
+    for (let i = 0; i < nfft; i++) S[(i + nfft / 2) % nfft] += br[i] * br[i] + bi[i] * bi[i];
+    segs++;
+  }
+  const sc = 1 / (fsb * U * segs), df = fsb / nfft;
+  for (let i = 0; i < nfft; i++) S[i] *= sc;
+  return { S, df, nfft, f: i => (i - nfft / 2) * df };
+}
+
+// ---------- I-Q constellation (signal space) ----------
+// ASK and PSK: points on the I axis, scaled so that sqrt(Eb) = 1 (peak amplitude for ASK). FSK: the two orthogonal tones are the two axes.
+// 16-QAM: average symbol energy 1. Noise is Gaussian with standard deviation sqrt(N0/2) on each axis, in the same units.
+// The receiver picks the nearest ideal point. Returns the ideal points and, for nSym random symbols, the received points.
+function constellation(kind, ebn0dB, m, nSym, rng) {
+  const g = Math.pow(10, ebn0dB / 10);
+  let ideal, sigma = Math.sqrt(1 / (2 * g));
+  if (kind === 'PSK') ideal = [{ x: -1, y: 0, bits: '0' }, { x: 1, y: 0, bits: '1' }];
+  else if (kind === 'FSK') ideal = [{ x: 1, y: 0, bits: '0' }, { x: 0, y: 1, bits: '1' }];
+  else if (kind === 'ASK') { const a0 = (1 - m) / (1 + m); ideal = [{ x: a0, y: 0, bits: '0' }, { x: 1, y: 0, bits: '1' }]; }
+  else {
+    ideal = []; sigma = Math.sqrt(1 / (8 * g));                       // Es = 4 Eb for 4 bits per symbol
+    for (let v = 0; v < 16; v++) { const q = qamSymbol(v); ideal.push({ x: q.i, y: q.q, bits: v.toString(2).padStart(4, '0') }); }
+  }
+  const rx = new Float32Array(nSym), ry = new Float32Array(nSym), bad = new Uint8Array(nSym);
+  let errs = 0;
+  for (let n = 0; n < nSym; n++) {
+    const t = Math.floor(rng.u() * ideal.length), p = ideal[t];
+    const x = p.x + sigma * rng.g(), y = p.y + sigma * rng.g();
+    let best = 0, bd = Infinity;
+    for (let j = 0; j < ideal.length; j++) { const d = (x - ideal[j].x) ** 2 + (y - ideal[j].y) ** 2; if (d < bd) { bd = d; best = j; } }
+    rx[n] = x; ry[n] = y; if (best !== t) { bad[n] = 1; errs++; }
+  }
+  return { ideal, rx, ry, bad, errs, nSym, sigma };
+}
+
+</script>
+<script>
+// ===== Shift Keying Lab: left rail + one big plot (waveforms / spectrum / BER), ASK, FSK, PSK and 16-QAM =====
+(function () {
+const $ = id => document.getElementById(id);
+const KINDS = ['ASK', 'FSK', 'PSK', 'QAM'];
+const LABEL = { ASK: 'ASK', FSK: 'FSK', PSK: 'PSK', QAM: '16-QAM' };
+const SUB = { ASK: 'amplitude', FSK: 'frequency', PSK: 'phase', QAM: 'amp/phase' };
+const BPS = { ASK: 1, FSK: 1, PSK: 1, QAM: 4 };            // bits per symbol
+const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const S = { kind: 'PSK', view: 'wave', bits: '10100110', Rb: 1000, cpb: 4, dfn: 4, m: 1, eb: 8, noise: false,
+            target: 4e-6, speed: 1, playing: !reduced };
+const anim = { t: reduced ? 1 : 0, last: 0, raf: 0 };      // t = playhead position as a fraction of the bit stream
+const fc = () => S.cpb * S.Rb;                              // carrier = cpb x bit rate
+const df = () => S.dfn * S.Rb / 2;                          // FSK spacing, always a multiple of Rb/2
+const ebLin = () => Math.pow(10, S.eb / 10);
+
+const DESC = {
+  ASK: 'Amplitude switches between A and A(1−m)/(1+m). Simplest, but the weakest against noise.',
+  FSK: 'One tone per bit. Needs the most bandwidth: (f1 − f0) + Rb.',
+  PSK: 'Binary PSK: the phase flips between 0° and 180°. Same bandwidth as ASK and about 3 dB better than FSK.',
+  QAM: '16 amplitude/phase states carry 4 bits per symbol: the narrowest band, but it needs the cleanest signal.',
+};
+
+// ---------- formatting ----------
+const SUP = { '-': '⁻', '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹' };
+const sup = n => String(n).split('').map(c => SUP[c] || c).join('');
+const fmtE = x => {
+  if (!isFinite(x)) return '—';
+  if (x === 0) return '0';
+  if (x >= 0.01) return x.toFixed(3);
+  const e = Math.floor(Math.log10(x)), m = x / Math.pow(10, e);
+  return m.toFixed(1) + '×10' + sup(e);
+};
+const fmtHz = f => f >= 1e3 ? (+(f / 1e3).toPrecision(4)) + ' kHz' : (+f.toPrecision(4)) + ' Hz';
+const fmtBps = r => fmtHz(r).replace('Hz', 'bps');
+const dB = x => 10 * Math.log10(x);
+
+// ---------- colours ----------
+let COL = {};
+function readColors() {
+  const cs = getComputedStyle(document.documentElement);
+  for (const k of ['ink', 'muted', 'line', 'grid', 'ask', 'fsk', 'psk', 'qam', 'noise', 'warn', 'panel', 'bg'])
+    COL[k] = cs.getPropertyValue('--' + k).trim();
+}
+const colOf = k => COL[k.toLowerCase()];
+function alpha(hex, a) {
+  const h = hex.replace('#', ''), n = parseInt(h.length === 3 ? h.split('').map(c => c + c).join('') : h, 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+// ---------- canvas helpers ----------
+const MONO = '12px "IBM Plex Mono", ui-monospace, Consolas, monospace';
+const SANS = '12px "IBM Plex Sans", system-ui, sans-serif';
+function prep(cv) {
+  const dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  const W = Math.max(1, Math.round(w * dpr)), H = Math.max(1, Math.round(h * dpr));
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  return { g, w, h };
+}
+function niceTicks(a, b, n) {
+  const span = b - a, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), r = raw / mag;
+  const step = (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag, t = [];
+  for (let v = Math.ceil(a / step - 1e-9) * step; v <= b + step * 1e-9; v += step) t.push(+v.toFixed(10));
+  return t;
+}
+function axes(g, box, ax) {
+  const { l, r, t, b } = box;
+  const X = v => l + (v - ax.x0) / (ax.x1 - ax.x0) * (r - l);
+  const ly0 = ax.ylog ? Math.log10(ax.y0) : 0, ly1 = ax.ylog ? Math.log10(ax.y1) : 0;
+  const Y = ax.ylog ? v => b - (Math.log10(Math.max(v, 1e-300)) - ly0) / (ly1 - ly0) * (b - t)
+                    : v => b - (v - ax.y0) / (ax.y1 - ax.y0) * (b - t);
+  g.save(); g.font = MONO; g.lineWidth = 1; g.strokeStyle = COL.grid;
+  const xt = ax.xticks || niceTicks(ax.x0, ax.x1, Math.max(3, Math.floor((r - l) / 70)));
+  let yt;
+  if (ax.ylog) {
+    yt = []; for (let e = Math.ceil(ly0); e <= ly1; e++) yt.push(Math.pow(10, e));
+    g.globalAlpha = 0.6;
+    for (let e = Math.floor(ly0); e < ly1; e++) for (let m = 2; m < 10; m++) {
+      const v = m * Math.pow(10, e); if (v < ax.y0 || v > ax.y1) continue;
+      g.beginPath(); g.moveTo(l, Y(v) + .5); g.lineTo(r, Y(v) + .5); g.stroke();
+    }
+    g.globalAlpha = 1;
+  } else yt = niceTicks(ax.y0, ax.y1, Math.max(3, Math.floor((b - t) / 45)));
+  g.fillStyle = COL.muted; g.textAlign = 'center'; g.textBaseline = 'top';
+  for (const v of xt) { const x = Math.round(X(v)) + .5; g.beginPath(); g.moveTo(x, t); g.lineTo(x, b); g.stroke(); g.fillText(ax.xfmt ? ax.xfmt(v) : String(v), x, b + 5); }
+  g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (const v of yt) { const y = Math.round(Y(v)) + .5; g.beginPath(); g.moveTo(l, y); g.lineTo(r, y); g.stroke(); g.fillText(ax.yfmt ? ax.yfmt(v) : String(v), l - 6, y); }
+  g.strokeStyle = COL.line; g.strokeRect(l + .5, t + .5, r - l - 1, b - t - 1);
+  g.fillStyle = COL.ink; g.font = SANS;
+  g.textAlign = 'center'; g.textBaseline = 'bottom'; g.fillText(ax.xlabel, (l + r) / 2, box.H - 6);
+  g.save(); g.translate(14, (t + b) / 2); g.rotate(-Math.PI / 2); g.textBaseline = 'middle'; g.fillText(ax.ylabel, 0, 0); g.restore();
+  g.restore();
+  return { X, Y };
+}
+
+// ---------- 1. waveforms (computed once per change, drawn every animation frame) ----------
+let PAD = 0;
+function bitArray() {
+  const raw = (S.bits.replace(/[^01]/g, '') || '0').split('').map(Number);
+  PAD = (4 - raw.length % 4) % 4;                           // 16-QAM needs whole 4-bit symbols
+  for (let i = 0; i < PAD; i++) raw.push(0);
+  return raw;
+}
+let WV = null;
+function computeWave() {
+  const bits = bitArray(), Tb = 1 / S.Rb, T = bits.length * Tb;
+  let fs = 64 * (fc() + df() / 2); if (fs * T > 40000) fs = 40000 / T;
+  const N0 = (1 / (2 * S.Rb)) / ebLin();                    // Eb = 0.5 W x Tb
+  const p = { Rb: S.Rb, fc: fc(), df: df(), m: S.m, nReal: bits.length - PAD };
+  const lanes = {};
+  for (const k of KINDS) {
+    const wv = waveform(k, bits, p, fs, S.noise ? { N0, Bn: bandwidths(k, S.Rb, df()).nom } : null, 7);
+    let pk = 1; if (S.noise) for (let n = 0; n < wv.N; n++) pk = Math.max(pk, Math.abs(wv.y[n]));
+    lanes[k] = { wv, A: Math.min(pk, 3) * 1.1 };
+  }
+  WV = { bits, Tb, T, fs, lanes };
+}
+const headSec = () => Math.min(1, anim.t) * WV.T;
+const bitLabel = (k, b) => k === 'PSK' ? (b ? '0°' : '180°') : k === 'FSK' ? (b ? 'f1' : 'f0') : (b ? 'A' : (S.m >= 0.999 ? '0' : 'low'));
+
+function drawTime() {
+  const cv = $('cvTime'); if (cv.hidden || !WV || !cv.clientWidth) return;
+  const { g, w, h } = prep(cv), { bits, Tb, T, fs, lanes } = WV;
+  const head = headSec(), running = anim.t < 1;
+  const l = w < 520 ? 108 : 114, r = w - 16, top = 14, axisH = 40, gap = 10, n = KINDS.length;
+  const bitH = Math.min(64, (h - top - axisH - gap * n) * 0.16), waveH = (h - top - axisH - gap * n - bitH) / n;
+  const X = t => l + t / T * (r - l);
+  const rows = [{ name: 'Data', t: top, h: bitH }];
+  let y = top + bitH + gap;
+  for (const k of KINDS) { rows.push({ name: k, t: y, h: waveH }); y += waveH + gap; }
+  const bot = y - gap;
+
+  const bi = Math.min(bits.length - 1, Math.floor(head / Tb));
+  if (running) { g.fillStyle = alpha(COL.psk, 0.07); g.fillRect(X(bi * Tb), top, X((bi + 1) * Tb) - X(bi * Tb), bot - top); }
+  for (const ln of rows) {
+    if (ln.name === S.kind) { g.fillStyle = alpha(colOf(S.kind), 0.07); g.fillRect(l, ln.t, r - l, ln.h); }
+    g.strokeStyle = COL.line; g.lineWidth = 1; g.strokeRect(l + .5, ln.t + .5, r - l - 1, ln.h - 1);
+  }
+  g.strokeStyle = COL.grid; g.setLineDash([3, 3]);
+  for (let i = 1; i < bits.length; i++) { const x = Math.round(X(i * Tb)) + .5; g.beginPath(); g.moveTo(x, top); g.lineTo(x, bot); g.stroke(); }
+  g.setLineDash([]);
+
+  // data lane (NRZ)
+  const bl = rows[0], yb = v => bl.t + bl.h - 6 - v * (bl.h - 24);
+  g.strokeStyle = COL.ink; g.lineWidth = 2; g.beginPath();
+  bits.forEach((v, i) => { const x0 = X(i * Tb), x1 = X((i + 1) * Tb); i ? g.lineTo(x0, yb(v)) : g.moveTo(x0, yb(v)); g.lineTo(x1, yb(v)); });
+  g.stroke();
+  g.font = '600 13px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'top';
+  bits.forEach((v, i) => { g.fillStyle = i >= bits.length - PAD ? COL.muted : COL.ink; g.fillText(String(v), X((i + .5) * Tb), bl.t + 3); });
+  g.textAlign = 'left'; g.textBaseline = 'middle'; g.font = '600 13px "IBM Plex Sans", sans-serif'; g.fillStyle = COL.ink;
+  g.fillText('Data', 6, bl.t + bl.h / 2);
+
+  // carrier lanes: faint full trace, bright trace up to the playhead
+  const nHead = Math.min(lanes.ASK.wv.N, Math.floor(head * fs));
+  KINDS.forEach((k, li) => {
+    const ln = rows[li + 1], { wv, A } = lanes[k], c = colOf(k), sel = k === S.kind;
+    const yy = v => ln.t + ln.h / 2 - Math.max(-A, Math.min(A, v)) / A * (ln.h / 2 - 4);
+    g.strokeStyle = COL.grid; g.beginPath(); g.moveTo(l, yy(0)); g.lineTo(r, yy(0)); g.stroke();
+    const step = Math.max(1, Math.floor(wv.N / ((r - l) * 4)));
+    const series = (arr, color, lw, end) => { g.strokeStyle = color; g.lineWidth = lw; g.beginPath();
+      for (let i = 0; i < end; i += step) { const x = X(i / fs), v = yy(arr[i]); i ? g.lineTo(x, v) : g.moveTo(x, v); } g.stroke(); };
+    if (running) {
+      if (S.noise) series(wv.y, alpha(COL.noise, 0.22), 1, wv.N);
+      series(wv.clean, alpha(c, 0.28), 1.2, wv.N);
+    }
+    if (S.noise) series(wv.y, alpha(COL.noise, 0.8), 1, nHead);
+    series(wv.clean, c, sel ? 1.9 : 1.4, nHead);
+    if (running && nHead > 0) { g.fillStyle = c; g.beginPath(); g.arc(X(head), yy(wv.clean[Math.min(wv.N - 1, nHead)]), 3.5, 0, 7); g.fill(); }
+    g.font = MONO; g.textAlign = 'center'; g.textBaseline = 'bottom';
+    const label = (txt, x) => { const y0 = ln.t + ln.h - 2; g.fillStyle = alpha(COL.panel, 0.9); const tw = g.measureText(txt).width; g.fillRect(x - tw / 2 - 2, y0 - 13, tw + 4, 12); g.fillStyle = c; g.fillText(txt, x, y0); };
+    if (k === 'QAM') { for (let s = 0; s < bits.length / 4; s++) label(bits.slice(4 * s, 4 * s + 4).join(''), X((4 * s + 2) * Tb)); }
+    else if ((r - l) / bits.length > 30) bits.forEach((b, i) => { if (i < bits.length - PAD) label(bitLabel(k, b), X((i + .5) * Tb)); });
+    g.textAlign = 'left'; g.textBaseline = 'middle';                // scheme name and sub-label sit at the far left
+    g.font = '700 14px "IBM Plex Sans", sans-serif'; g.fillStyle = c; g.fillText(LABEL[k], 6, ln.t + ln.h / 2 - 8);
+    g.font = MONO; g.fillStyle = COL.muted; g.fillText(SUB[k], 6, ln.t + ln.h / 2 + 8);
+    g.textAlign = 'right'; g.font = '10px "IBM Plex Mono", monospace';   // voltage scale sits against the plot
+    g.fillText('1 V', l - 6, yy(1)); g.fillText('−1 V', l - 6, yy(-1));
+  });
+  if (running) { g.strokeStyle = alpha(COL.ink, 0.45); g.lineWidth = 1; g.beginPath(); g.moveTo(Math.round(X(head)) + .5, top); g.lineTo(Math.round(X(head)) + .5, bot); g.stroke(); }
+
+  const ticks = niceTicks(0, T * 1e3, Math.max(3, Math.floor((r - l) / 80)));
+  g.font = MONO; g.fillStyle = COL.muted; g.textAlign = 'center'; g.textBaseline = 'top'; g.strokeStyle = COL.line;
+  for (const v of ticks) { const x = Math.round(X(v / 1e3)) + .5; g.beginPath(); g.moveTo(x, bot); g.lineTo(x, bot + 4); g.stroke(); g.fillText(String(+v.toFixed(3)), x, bot + 7); }
+  g.fillStyle = COL.ink; g.font = SANS; g.textBaseline = 'bottom'; g.fillText('Time (ms)', (l + r) / 2, h - 6);
+}
+
+// ---------- 2. spectrum (selected scheme bold, the others faint) ----------
+let specCache = { key: '', P: {} };
+function drawSpec() {
+  const cv = $('cvSpec'); if (cv.hidden || !cv.clientWidth) return;
+  const N0n = (1 / (2 * S.Rb)) / ebLin();                       // same noise density as the waveforms
+  const { g, w, h } = prep(cv), k = S.kind, c = colOf(k), D = df(), F = fc(), key = [S.Rb, D, S.m].join('|');
+  if (specCache.key !== key) { const P = {}; for (const kk of KINDS) P[kk] = envelopePSD(kk, { Rb: S.Rb, df: D, m: S.m }, 21); specCache = { key, P }; }
+  const bw = bandwidths(k, S.Rb, D);
+  const maxNom = Math.max(...KINDS.map(kk => bandwidths(kk, S.Rb, D).nom)), span = maxNom / 2 + 1.5 * S.Rb, fLo = Math.max(0, F - span), fHi = F + span;
+  const tr = {}; let pk = -Infinity;
+  for (const kk of KINDS) {
+    const P = specCache.P[kk], xs = [], ys = [];
+    for (let i = 0; i < P.nfft; i++) {
+      const fb = P.f(i), f = F + fb; if (f < fLo || f > fHi) continue;
+      let v = P.S[i]; const j = Math.round((-2 * F - fb) / P.df + P.nfft / 2); if (j >= 0 && j < P.nfft) v += P.S[j];
+      const d = dB(Math.max(0.5 * v + (S.noise ? N0n : 0), 1e-30)); xs.push(f); ys.push(d); pk = Math.max(pk, d);
+    }
+    tr[kk] = { xs, ys };
+  }
+  const y1 = Math.ceil((pk + 3) / 10) * 10, y0 = y1 - 50;
+  const box = { l: 64, r: w - 16, t: 66, b: h - 46, H: h };
+  const { X, Y } = axes(g, box, { x0: fLo / 1e3, x1: fHi / 1e3, y0, y1, xlabel: 'Frequency (kHz)', ylabel: 'Power density (dBW/Hz)', xfmt: v => String(+v.toFixed(2)) });
+  const Xf = f => X(f / 1e3);
+  g.save(); g.beginPath(); g.rect(box.l, box.t, box.r - box.l, box.b - box.t); g.clip();
+  g.fillStyle = alpha(c, 0.07); g.fillRect(Xf(F - bw.nom / 2), box.t, Xf(F + bw.nom / 2) - Xf(F - bw.nom / 2), box.b - box.t);
+  g.fillStyle = alpha(c, 0.14); g.fillRect(Xf(F - bw.nyq / 2), box.t, Xf(F + bw.nyq / 2) - Xf(F - bw.nyq / 2), box.b - box.t);
+  const line = (kk, color, lw) => { g.strokeStyle = color; g.lineWidth = lw; g.beginPath(); tr[kk].xs.forEach((f, i) => { const x = Xf(f), yv = Y(Math.max(y0 - 5, tr[kk].ys[i])); i ? g.lineTo(x, yv) : g.moveTo(x, yv); }); g.stroke(); };
+  for (const kk of KINDS) if (kk !== k) line(kk, alpha(colOf(kk), 0.3), 1.4);
+  line(k, c, 2.2);
+  if (S.noise) {                                                    // white-noise floor
+    const yN = Y(dB(N0n)); g.strokeStyle = COL.ink; g.lineWidth = 1.2; g.setLineDash([6, 4]); g.beginPath(); g.moveTo(box.l, yN); g.lineTo(box.r, yN); g.stroke(); g.setLineDash([]);
+    g.font = MONO; g.fillStyle = COL.ink; g.textAlign = 'right'; g.textBaseline = 'bottom'; g.fillText(`noise floor ${dB(N0n).toFixed(0)} dBW/Hz`, box.r - 6, yN - 3);
+  }
+  const Rs = S.Rb / BPS[k];
+  const marks = k === 'FSK' ? [[F - D / 2, 'f0'], [F + D / 2, 'f1'], [F - D / 2 - S.Rb, 'f0−Rb'], [F + D / 2 + S.Rb, 'f1+Rb']]
+    : [[F, 'fc'], [F - Rs, 'fc−' + (k === 'QAM' ? 'Rs' : 'Rb')], [F + Rs, 'fc+' + (k === 'QAM' ? 'Rs' : 'Rb')]];
+  g.font = MONO; g.textAlign = 'center'; g.textBaseline = 'bottom'; g.strokeStyle = COL.ink; g.lineWidth = 1;
+  for (const [f, nm] of marks) {
+    g.setLineDash([2, 3]); g.beginPath(); g.moveTo(Xf(f), box.t); g.lineTo(Xf(f), box.b); g.stroke(); g.setLineDash([]);
+    g.fillStyle = alpha(COL.panel, 0.9); const tw = g.measureText(nm).width; g.fillRect(Xf(f) - tw / 2 - 2, box.b - 18, tw + 4, 14);
+    g.fillStyle = COL.ink; g.fillText(nm, Xf(f), box.b - 5);
+  }
+  g.restore();
+  const bracket = (wid, yy, txt) => {
+    const a = Xf(F - wid / 2), b = Xf(F + wid / 2);
+    g.strokeStyle = c; g.lineWidth = 1; g.beginPath(); g.moveTo(a, yy + 4); g.lineTo(a, yy); g.lineTo(b, yy); g.lineTo(b, yy + 4); g.stroke();
+    g.fillStyle = c; g.font = MONO; g.textAlign = 'center'; g.textBaseline = 'bottom'; g.fillText(txt, (a + b) / 2, yy - 2);
+  };
+  bracket(bw.nom, 16, `BW_NOM ${fmtHz(bw.nom)}`);
+  bracket(bw.nyq, 44, `BW_NYQ ${fmtHz(bw.nyq)}`);
+
+  const P = specCache.P[k]; let tot = 0, inNom = 0;
+  for (let i = 0; i < P.nfft; i++) { const v = P.S[i]; tot += v; if (Math.abs(P.f(i)) <= bw.nom / 2) inNom += v; }
+  NOTE.spec = (k === 'FSK' ? 'FSK looks like two ASK spectra, one at f0 and one at f1. The two spikes are the tones. '
+    : k === 'ASK' ? 'ASK is AM with a line-code message: side bands on both sides of the carrier. The spike at fc is carrier power that carries no data. '
+    : k === 'PSK' ? 'PSK has the same main lobe as ASK, but no carrier spike: all the power is in the side bands. '
+    : '16-QAM sends 4 bits per symbol, so symbols come 4× slower and the band is 4× narrower than PSK. The peak is taller because the same power is squeezed into less bandwidth. ') +
+    `The faint lines are the other schemes. Power inside BW<sub>NOM</sub>: <b>${(100 * inNom / tot).toFixed(1)} %</b> · efficiency R<sub>b</sub>/BW<sub>NYQ</sub>: <b>${(S.Rb / bw.nyq).toFixed(2)} bit/s/Hz</b>` +
+    (S.noise ? ` The dashed line is the noise floor, N<sub>0</sub> = <b>${dB(N0n).toFixed(1)} dBW/Hz</b>. Anything below it is buried in the noise.` : '');
+}
+
+// ---------- 2b. I-Q constellation of the selected scheme ----------
+function drawConst() {
+  const cv = $('cvConst'); if (!cv.clientWidth) return;
+  const { g, w, h } = prep(cv), k = S.kind, c = colOf(k);
+  const N = S.noise ? 1500 : 0, C = constellation(k, S.eb, S.m, N, makeRng(5));
+  const maxI = Math.max(...C.ideal.map(p => Math.max(Math.abs(p.x), Math.abs(p.y))));
+  const lim = Math.max(1.1, S.noise ? Math.min(2.6, maxI + 3.2 * C.sigma) : maxI * 1.35);
+  const side = Math.max(120, Math.min(w - 70, h - 70)), l = 54 + Math.max(0, (w - 70 - side) / 2), t = 24;
+  const box = { l, r: l + side, t, b: t + side, H: h }, fsk = k === 'FSK', ticks = niceTicks(-lim, lim, 4);
+  const { X, Y } = axes(g, box, { x0: -lim, x1: lim, y0: -lim, y1: lim, xticks: ticks, yticks: ticks,
+    xlabel: fsk ? 'tone f0 (normalised)' : 'I, in-phase (normalised)', ylabel: fsk ? 'tone f1 (normalised)' : 'Q, quadrature (normalised)',
+    xfmt: v => String(+v.toFixed(2)), yfmt: v => String(+v.toFixed(2)) });
+  g.save(); g.beginPath(); g.rect(box.l, box.t, side, side); g.clip();
+  // decision boundaries
+  g.strokeStyle = alpha(COL.muted, 0.85); g.setLineDash([5, 4]); g.lineWidth = 1; g.beginPath();
+  if (k === 'QAM') { for (const v of [-2 * QAM_SC, 0, 2 * QAM_SC]) { g.moveTo(X(v), box.t); g.lineTo(X(v), box.b); g.moveTo(box.l, Y(v)); g.lineTo(box.r, Y(v)); } }
+  else if (fsk) { g.moveTo(X(-lim), Y(-lim)); g.lineTo(X(lim), Y(lim)); }
+  else { const th = (C.ideal[0].x + C.ideal[1].x) / 2; g.moveTo(X(th), box.t); g.lineTo(X(th), box.b); }
+  g.stroke(); g.setLineDash([]);
+  // received symbols (wrong ones on top, in red)
+  for (const wrong of [0, 1]) {
+    g.fillStyle = wrong ? 'rgba(214, 69, 69, 0.9)' : alpha(c, 0.4);
+    for (let n = 0; n < N; n++) if (C.bad[n] === wrong) { g.beginPath(); g.arc(X(C.rx[n]), Y(C.ry[n]), wrong ? 2.6 : 2.1, 0, 7); g.fill(); }
+  }
+  // ideal symbols
+  g.strokeStyle = COL.ink; g.lineWidth = 2;
+  for (const p of C.ideal) { const x = X(p.x), y = Y(p.y); g.beginPath(); g.moveTo(x - 5, y); g.lineTo(x + 5, y); g.moveTo(x, y - 5); g.lineTo(x, y + 5); g.stroke(); }
+  if (side > 190) {
+    g.font = '600 10.5px "IBM Plex Mono", monospace'; g.textAlign = 'center'; g.textBaseline = 'bottom';
+    for (const p of C.ideal) {
+      const txt = fsk ? (p.bits === '0' ? 'f0' : 'f1') : p.bits, x = X(p.x), y = Y(p.y) - 7, tw = g.measureText(txt).width;
+      g.fillStyle = alpha(COL.panel, 0.85); g.fillRect(x - tw / 2 - 2, y - 12, tw + 4, 13); g.fillStyle = COL.ink; g.fillText(txt, x, y);
+    }
+  }
+  g.restore();
+  g.font = MONO; g.fillStyle = COL.ink; g.textAlign = 'left'; g.textBaseline = 'top';
+  g.fillText(S.noise ? `symbol errors: ${C.errs} of ${N}` : 'ideal symbols (no noise)', box.l, 4);
+  NOTE.iq = (S.noise
+    ? `I-Q constellation (right): crosses are the ideal symbols, dots are what the receiver gets after noise, and red dots cross a dashed decision line so they are decoded wrongly (${C.errs} of ${N} here). `
+    : `I-Q constellation (right): the ideal symbols${k === 'QAM' ? ', each labelled with its 4 bits' : ''}. Tick "Show the noise" to see them spread out. `)
+    + (k === 'QAM' ? '16-QAM packs 16 points into the same space, so noise pushes a symbol over a line sooner than in PSK.' : fsk ? 'FSK uses its two orthogonal tones as the two axes.' : '');
+}
+
+// ---------- 3. BER ----------
+const sim = { key: '', res: {}, tok: 0 };
+function runSim() {
+  const key = [S.eb, S.m].join('|'); if (sim.key === key) return;
+  const tok = ++sim.tok; sim.key = key; sim.res = {};
+  let i = 0;
+  const step = () => {
+    if (tok !== sim.tok) return;
+    const k = KINDS[i], n = 200000;
+    sim.res[k] = { e: simulate(k, n, S.eb, S.m, makeRng(100 + i)), n }; i++;
+    renderTable(); drawBer();
+    if (i < KINDS.length) setTimeout(step, 0);
+  };
+  setTimeout(step, 30);
+}
+function drawBer() {
+  const cv = $('cvBer'); if (cv.hidden || !cv.clientWidth) return;
+  const { g, w, h } = prep(cv);
+  const Y0 = 1e-7, Y1 = 1, box = { l: 66, r: w - 16, t: 14, b: h - 46, H: h };
+  const { X, Y } = axes(g, box, { x0: 0, x1: 18, y0: Y0, y1: Y1, ylog: true, xlabel: 'Eb/N0 (dB)', ylabel: 'Bit error rate (errors per bit)', yfmt: v => '10' + sup(Math.round(Math.log10(v))), xticks: [0, 2, 4, 6, 8, 10, 12, 14, 16, 18] });
+  g.save(); g.beginPath(); g.rect(box.l, box.t, box.r - box.l, box.b - box.t); g.clip();
+  g.strokeStyle = COL.ink; g.lineWidth = 1; g.setLineDash([4, 4]);
+  if (S.target > Y0 && S.target < Y1) { g.beginPath(); g.moveTo(box.l, Y(S.target)); g.lineTo(box.r, Y(S.target)); g.stroke(); }
+  g.beginPath(); g.moveTo(X(S.eb), box.t); g.lineTo(X(S.eb), box.b); g.stroke(); g.setLineDash([]);
+  const lab = { PSK: [1, 'below'], FSK: [3, 'above'], ASK: [5, 'above'], QAM: [13.5, 'above'] };
+  for (const k of KINDS) {
+    const c = colOf(k), sel = k === S.kind;
+    g.strokeStyle = c; g.lineWidth = sel ? 3.2 : 1.8; g.globalAlpha = sel ? 1 : 0.7; g.beginPath(); let started = false;
+    for (let x = 0; x <= 18.001; x += 0.1) { const v = ber(k, x, S.m); if (v < Y0 * 0.5) break; started ? g.lineTo(X(x), Y(v)) : (g.moveTo(X(x), Y(v)), started = true); }
+    g.stroke(); g.globalAlpha = 1;
+    const v = ber(k, S.eb, S.m);
+    if (v > Y0) { g.fillStyle = COL.panel; g.strokeStyle = c; g.lineWidth = 2; g.beginPath(); g.arc(X(S.eb), Y(v), 4.5, 0, 7); g.fill(); g.stroke(); }
+    const req = requiredEbN0(k, S.target, S.m);
+    if (isFinite(req) && req <= 18 && S.target > Y0) { g.fillStyle = c; g.beginPath(); g.arc(X(req), Y(S.target), 4.5, 0, 7); g.fill(); }
+    const sr = sim.res[k];
+    if (sr && sr.e > 0) { g.strokeStyle = c; g.lineWidth = 1.5; g.beginPath(); const x = X(S.eb), yv = Y(sr.e / sr.n); g.moveTo(x - 6, yv - 6); g.lineTo(x + 6, yv + 6); g.moveTo(x + 6, yv - 6); g.lineTo(x - 6, yv + 6); g.stroke(); }
+    const [lx, pos] = lab[k], lv = ber(k, lx, S.m);
+    g.font = '700 12px "IBM Plex Mono", monospace'; g.fillStyle = c; g.textAlign = 'left'; g.textBaseline = pos === 'below' ? 'top' : 'bottom';
+    if (lv > Y0) g.fillText(LABEL[k], X(lx) + 6, Y(lv) + (pos === 'below' ? 5 : -4));
+  }
+  g.restore();
+  g.font = MONO; g.fillStyle = COL.muted; g.textAlign = 'left'; g.textBaseline = 'bottom';
+  g.fillText('○ theory at your Eb/N0', box.l + 10, box.b - 36);
+  g.fillText('● Eb/N0 for the target BER', box.l + 10, box.b - 22);
+  g.fillText('× simulated (200 000 bits)', box.l + 10, box.b - 8);
+}
+function renderTable() {
+  const rows = KINDS.map(k => {
+    const bw = bandwidths(k, S.Rb, df()), req = requiredEbN0(k, S.target, S.m), sr = sim.res[k];
+    const simTxt = sr ? (sr.e ? fmtE(sr.e / sr.n) : `0 errors in ${sr.n.toLocaleString()}`) : '…';
+    return `<tr${k === S.kind ? ' style="font-weight:600"' : ''}><td><i class="sw" style="background:${colOf(k)}"></i>${LABEL[k]}</td>` +
+      `<td class="num">${fmtE(ber(k, S.eb, S.m))}</td><td class="num">${simTxt}</td>` +
+      `<td class="num">${isFinite(req) ? req.toFixed(1) + ' dB' : '—'}</td><td class="num">${fmtHz(bw.nyq)}</td></tr>`;
+  }).join('');
+  $('cmp').innerHTML = `<thead><tr><th>Scheme</th><th>BER at ${S.eb} dB (per bit)</th><th>BER simulated</th><th>Eb/N0 for BER ${fmtE(S.target)}</th><th>BW<sub>NYQ</sub></th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+// ---------- cards, chain, working, status ----------
+const NOTE = { wave: '', spec: '', iq: '', ber: '' };
+function renderWorking() {
+  const k = S.kind, bw = bandwidths(k, S.Rb, df()), g = ebLin(), r = v => `<span class="res">${v}</span>`;
+  const L = [];
+  L.push(['Bit time', `Tb = 1 / Rb = 1 / ${S.Rb} = ${r((1e3 / S.Rb).toPrecision(3) + ' ms')}`]);
+  if (k === 'FSK') {
+    L.push(['Nyquist BW', `BW_NYQ = (f1 − f0) + Rb = ${fmtHz(df())} + ${fmtHz(S.Rb)} = ${r(fmtHz(bw.nyq))}`]);
+    L.push(['Nominal BW', `BW_NOM = (f1 − f0) + 2·Rb = ${fmtHz(df())} + ${fmtHz(2 * S.Rb)} = ${r(fmtHz(bw.nom))}`]);
+  } else if (k === 'QAM') {
+    L.push(['Baud rate', `Rs = Rb / k = ${S.Rb} / 4 = ${r(S.Rb / 4 + ' baud')}`]);
+    L.push(['Nyquist BW', `BW_NYQ = Rs = ${r(fmtHz(bw.nyq))}`]);
+    L.push(['Nominal BW', `BW_NOM = 2·Rs = ${r(fmtHz(bw.nom))}`]);
+  } else {
+    L.push(['Nyquist BW', `BW_NYQ = Rb = ${r(fmtHz(bw.nyq))}`]);
+    L.push(['Nominal BW', `BW_NOM = 2·Rb = ${r(fmtHz(bw.nom))}`]);
+  }
+  L.push(['Efficiency', `Rb / BW_NYQ = ${S.Rb} / ${bw.nyq} = ${r((S.Rb / bw.nyq).toFixed(2) + ' bit/s/Hz')}`]);
+  L.push(['Eb/N0 as a ratio', `10^(${S.eb}/10) = ${r(g.toPrecision(4))}`]);
+  let arg, f;
+  if (k === 'PSK') { arg = Math.sqrt(2 * g); f = `Pb = Q(√(2·Eb/N0)) = Q(√(2 × ${g.toPrecision(4)}))`; }
+  else if (k === 'FSK') { arg = Math.sqrt(g); f = `Pb = Q(√(Eb/N0)) = Q(√${g.toPrecision(4)})`; }
+  else if (k === 'QAM') { arg = Math.sqrt(0.8 * g); f = `Pb ≈ (3/4)·Q(√(0.8·Eb/N0)) = ${fmtE(0.75 * Qf(arg))}; exact sum over the 4 levels per axis`; }
+  else { arg = Math.sqrt(2 * g) * S.m / (1 + S.m); f = S.m >= 0.999 ? `Pb = Q(√(Eb/(2·N0))) = Q(√(${g.toPrecision(4)} / 2))` : `Pb = Q(√(2·Eb/N0) · m/(1+m)) = Q(√(2 × ${g.toPrecision(4)}) × ${(S.m / (1 + S.m)).toFixed(3)})`; }
+  L.push(['Bit error rate', `${f} = ${k === 'QAM' ? '' : `Q(${arg.toFixed(3)}) = `}${r(fmtE(ber(k, S.eb, S.m)))}`]);
+  const req = requiredEbN0(k, S.target, S.m);
+  L.push(['Needed for target', `BER ${fmtE(S.target)} needs Eb/N0 = ${r(isFinite(req) ? req.toFixed(2) + ' dB' : '—')}`]);
+  $('working').innerHTML = L.map(([a, b]) => `<div class="line"><div class="what">${a}</div><div class="math">${b.replace(/BW_NYQ/g, 'BW<sub>NYQ</sub>').replace(/BW_NOM/g, 'BW<sub>NOM</sub>')}</div></div>`).join('');
+}
+function renderStageHead() {
+  const v = S.view, k = S.kind;
+  $('stageTitle').textContent = v === 'wave' ? `Waveforms (V), power spectrum (dBW/Hz) and I-Q constellation of ${LABEL[k]}, updating together` : 'Bit error rate vs Eb/N0';
+  if (v === 'wave') NOTE.wave = `Bit time T<sub>b</sub> = 1/R<sub>b</sub> = <b>${(1e3 / S.Rb).toPrecision(3)} ms</b>, carrier <b>${fmtHz(fc())}</b>. FSK sends f<sub>0</sub> = <b>${fmtHz(fc() - df() / 2)}</b> for 0 and f<sub>1</sub> = <b>${fmtHz(fc() + df() / 2)}</b> for 1. 16-QAM labels each 4-bit symbol, which lasts <b>${(4e3 / S.Rb).toPrecision(3)} ms</b>.` +
+    (S.noise ? ` Purple: the same signals after noise at E<sub>b</sub>/N<sub>0</sub> = <b>${S.eb} dB</b>.` : '') +
+    (PAD ? ` <span class="warn">${PAD} zero${PAD > 1 ? 's were' : ' was'} added (grey) to fill whole 16-QAM symbols.</span>` : '');
+  if (v === 'ber') {
+    const need = KINDS.map(kk => `${LABEL[kk]} ${requiredEbN0(kk, S.target, S.m).toFixed(1)} dB`);
+    const rq = kk => requiredEbN0(kk, S.target, S.m);
+    NOTE.ber = `The starting settings are the Lecture 7 exercise (slide 9): target BER 4×10⁻⁶ and E<sub>b</sub>/N<sub>0</sub> = 8 dB. Exact theory for coherent detection in AWGN. For this target BER, PSK needs <b>${(rq('FSK') - rq('PSK')).toFixed(1)} dB</b> less than FSK, FSK needs <b>${(rq('ASK') - rq('FSK')).toFixed(1)} dB</b> less than ASK (ASK is compared at the same peak amplitude; the Lecture 7 graph also shows about 3 dB between FSK and ASK), and 16-QAM saves bandwidth but needs <b>${(rq('QAM') - rq('PSK')).toFixed(1)} dB</b> more than PSK. Dots on the target line: <b>${need.join(' · ')}</b>.`;
+  }
+  const fcWarn = fc() - Math.max(...KINDS.map(kk => bandwidths(kk, S.Rb, df()).nom)) / 2 <= 0;
+  $('stageNote').innerHTML = v === 'wave' ? NOTE.wave + '<br>' + NOTE.spec + '<br>' + NOTE.iq + (fcWarn ? ' <span class="warn">Carrier is too low for the widest spectrum; raise fc.</span>' : '') : NOTE.ber;
+}
+
+// ---------- playback ----------
+function tick(ts) {
+  anim.raf = 0;
+  if (!S.playing || S.view !== 'wave' || !WV) return;
+  if (!anim.last) anim.last = ts;
+  const dt = Math.min(0.1, (ts - anim.last) / 1000); anim.last = ts;
+  const period = Math.min(12, Math.max(4, WV.bits.length * 0.7));
+  anim.t += dt * S.speed / period;
+  if (anim.t > 1.12) anim.t = 0;
+  drawTime();
+  anim.raf = requestAnimationFrame(tick);
+}
+function ensureAnim() { if (S.playing && S.view === 'wave' && !anim.raf) { anim.last = 0; anim.raf = requestAnimationFrame(tick); } }
+
+// ---------- wiring ----------
+function syncUI() {
+  for (const b of $('picks').children) b.setAttribute('aria-pressed', String(b.dataset.k === S.kind));
+  for (const b of $('views').children) b.setAttribute('aria-pressed', String(b.dataset.v === S.view));
+  $('rb').value = S.Rb / 1000; $('rbOut').textContent = fmtBps(S.Rb);
+  $('fc').value = S.cpb; $('fcOut').textContent = fmtHz(fc()); $('fcHint').textContent = `${S.cpb} cycles per bit`;
+  $('dfn').value = S.dfn; $('dfOut').textContent = fmtHz(df()); $('dfHint').textContent = `${S.dfn} × Rb/2, so the tones are orthogonal`;
+  $('m').value = S.m; $('mOut').textContent = S.m.toFixed(2);
+  $('eb').value = S.eb; $('ebOut').textContent = S.eb.toFixed(1) + ' dB';
+  $('speed').value = S.speed; $('speedOut').textContent = S.speed.toFixed(2).replace(/0$/, '') + '×';
+  $('showNoise').checked = S.noise; if ($('bits').value !== S.bits) $('bits').value = S.bits;
+  $('playBtn').textContent = S.playing ? 'Pause' : 'Play';
+  $('pill').textContent = LABEL[S.kind]; $('pill').style.setProperty('--c', colOf(S.kind)); $('sdesc').textContent = DESC[S.kind];
+  $('playback').hidden = S.view !== 'wave';
+  $('berExtra').hidden = S.view !== 'ber';
+  $('cvTime').hidden = S.view !== 'wave'; $('lower').hidden = S.view !== 'wave'; $('stage').className = 'stage ' + (S.view === 'wave' ? 'two' : 'one'); $('cvBer').hidden = S.view !== 'ber';
+  if (document.activeElement !== $('target')) $('target').value = S.target.toExponential(0);
+}
+let raf = 0;
+function update() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; renderAll(); }); }
+function drawAll() { drawTime(); drawSpec(); drawConst(); drawBer(); }
+function renderAll() {
+  syncUI(); computeWave(); drawAll(); runSim();
+  renderStageHead(); renderTable(); renderWorking(); ensureAnim();
+}
+function redraw() { readColors(); if (!WV) return; drawAll(); }
+
+function init() {
+  readColors();
+  for (const b of $('picks').children) b.addEventListener('click', () => { S.kind = b.dataset.k; update(); });
+  for (const b of $('views').children) b.addEventListener('click', () => { S.view = b.dataset.v; update(); });
+  const num = (id, fn) => $(id).addEventListener('input', e => { fn(parseFloat(e.target.value)); update(); });
+  num('rb', v => S.Rb = v * 1000);
+  num('fc', v => S.cpb = v);
+  num('dfn', v => S.dfn = v);
+  num('m', v => S.m = v);
+  num('eb', v => S.eb = v);
+  num('speed', v => S.speed = v);
+  $('showNoise').addEventListener('change', e => { S.noise = e.target.checked; update(); });
+  $('bits').addEventListener('input', e => { const c = e.target.value.replace(/[^01]/g, '').slice(0, 16); if (c !== e.target.value) e.target.value = c; S.bits = c || '0'; anim.t = 0; update(); });
+  $('rand').addEventListener('click', () => { let b = ''; for (let i = 0; i < 8; i++) b += Math.random() < 0.5 ? '0' : '1'; S.bits = b; anim.t = 0; update(); });
+  $('target').addEventListener('change', e => { const v = parseFloat(e.target.value); if (v > 0 && v < 0.5) S.target = v; else e.target.value = String(S.target); update(); });
+  $('playBtn').addEventListener('click', () => { S.playing = !S.playing; if (S.playing && anim.t >= 1) anim.t = 0; update(); });
+  $('restartBtn').addEventListener('click', () => { anim.t = 0; S.playing = true; update(); });
+  const refs = $('refs'), open = () => { refs.hidden = false; $('refsClose').focus(); }, close = () => { refs.hidden = true; $('refsBtn').focus(); };
+  $('refsBtn').addEventListener('click', open); $('refsClose').addEventListener('click', close);
+  refs.addEventListener('click', e => { if (e.target === refs) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !refs.hidden) close(); });
+  new ResizeObserver(() => redraw()).observe(document.querySelector('.stage'));
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
+  renderAll();
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
+
+</script>
+
+</body>
+</html>

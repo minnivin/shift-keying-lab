@@ -1,0 +1,289 @@
+<title>Shift Keying Lab — WCM555</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Interactive ASK, FSK, PSK and 16-QAM explorer for WCM555: waveforms, spectrum and bandwidth, and BER vs Eb/N0.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen instrument. Left rail of controls, one large stage that switches between three views,
+   a row of formula cards under it, and a status line at the bottom. */
+:root {
+  color-scheme: light;
+  --bg: #f7f8fa; --panel: #ffffff; --ink: #1f2933; --muted: #5f6b7a; --line: #e6e9ee; --grid: #f0f2f5;
+  --ask: #d9773a; --fsk: #2a9d8f; --psk: #3d6fd8; --qam: #b8478b; --noise: #b49ad6; --warn: #b7862a;
+  --f-display: "Archivo", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.5; margin: 0;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+.app { height: 100%; max-width: 1560px; margin: 0 auto; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.mono { font-family: var(--f-mono); }
+.cap { font-family: var(--f-mono); font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+
+/* top bar */
+.topbar { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 16px 0 12px; border-bottom: 1px solid var(--line); }
+.topbar h1 { margin: 0; font: 600 24px/1 var(--f-display); font-stretch: 88%; letter-spacing: -.01em; }
+.topbar h1 b { color: var(--psk); font-weight: 600; }
+
+.shell { display: grid; grid-template-columns: 276px minmax(0, 1fr); min-height: 0; }
+
+/* rail */
+.rail { overflow-y: auto; overflow-x: hidden; padding: 18px 22px 18px 0; border-right: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr); gap: 22px; align-content: start; }
+.sec { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; font-size: 13px; color: var(--ink); counter-reset: s; }
+.steps li { display: grid; grid-template-columns: 20px 1fr; gap: 8px; align-items: baseline; counter-increment: s; }
+.steps li::before { content: counter(s); font: 500 11px var(--f-mono); width: 18px; height: 18px; border-radius: 50%; border: 1px solid var(--line); display: grid; place-items: center; color: var(--muted); }
+.picks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.pick { font: inherit; text-align: left; padding: 8px 9px; border: 1px solid var(--line); background: var(--panel); border-radius: 10px; cursor: pointer; display: grid; gap: 1px; color: var(--ink); }
+.pick[data-k="ASK"] { --c: var(--ask); } .pick[data-k="FSK"] { --c: var(--fsk); } .pick[data-k="PSK"] { --c: var(--psk); } .pick[data-k="QAM"] { --c: var(--qam); }
+.pick .n { font: 600 13px var(--f-mono); }
+.pick .s { font: 400 12px var(--f-mono); color: var(--muted); }
+.pick:hover { border-color: var(--c); }
+.pick[aria-pressed="true"] { border-color: var(--c); background: color-mix(in srgb, var(--c) 9%, var(--panel)); }
+.pick[aria-pressed="true"] .n { color: var(--c); }
+.ctl { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; min-width: 0; }
+.ctl .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.ctl label { font-size: 13px; }
+.ctl output { font: 500 13px var(--f-mono); color: var(--psk); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hint { font-size: 12.5px; color: var(--muted); font-style: italic; overflow-wrap: anywhere; }
+input[type="range"] { width: 100%; accent-color: var(--psk); margin: 2px 0; }
+.bitsbox { display: flex; gap: 6px; min-width: 0; }
+.bitsbox input, .reader input { min-width: 0; font: 500 14px var(--f-mono); letter-spacing: .1em; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+.bitsbox input { flex: 1 1 0; width: 0; }
+.bitsbox .btn { flex: none; }
+.btn { font: 500 12.5px var(--f-body); padding: 7px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); cursor: pointer; }
+.btn:hover { border-color: var(--psk); color: var(--psk); }
+.btn.solid { background: var(--ink); border-color: var(--ink); color: var(--panel); }
+.btn.solid:hover { background: var(--psk); border-color: var(--psk); color: var(--panel); }
+.pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 13px; }
+.check input { accent-color: var(--psk); width: 16px; height: 16px; }
+.terms { display: grid; gap: 6px; font-size: 13px; color: var(--muted); }
+.terms b { color: var(--ink); font-weight: 600; }
+.fold { border-top: 1px solid var(--line); padding-top: 2px; }
+.fold summary { cursor: pointer; font: 500 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 10px 0; }
+.fold[open] summary { padding-bottom: 8px; }
+.fold .foldbody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; padding-bottom: 6px; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--psk); outline-offset: 2px; }
+
+/* main column */
+.main { min-width: 0; min-height: 0; overflow-y: auto; padding: 16px 0 16px 24px; display: flex; flex-direction: column; gap: 14px; }
+.sline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pill { font: 600 12px var(--f-mono); padding: 3px 12px; border-radius: 6px; border: 1px solid var(--c, var(--psk)); color: var(--c, var(--psk)); background: color-mix(in srgb, var(--c, var(--psk)) 8%, var(--panel)); }
+.sdesc { font-size: 13px; color: var(--muted); flex: 1 1 260px; min-width: 0; }
+.toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel); }
+.toggle button { font: 500 12px var(--f-mono); padding: 6px 12px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.toggle button + button { border-left: 1px solid var(--line); }
+.toggle button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+
+.stagehead { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+.stage { display: grid; gap: 12px; flex: none; }
+.stage.two { height: clamp(560px, calc(100vh - 250px), 720px); grid-template-rows: minmax(0, 1.25fr) minmax(0, 1fr); }
+.stage.one { height: 520px; grid-template-rows: minmax(0, 1fr); }
+.lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(230px, 36%); grid-template-rows: minmax(0, 1fr); gap: 12px; min-height: 0; }
+.lower[hidden] { display: none; }
+.stage canvas { width: 100%; height: 100%; min-height: 0; display: block; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.note { margin: 0; font-size: 13px; color: var(--muted); }
+.note b { color: var(--ink); font-family: var(--f-mono); font-weight: 500; }
+.note .warn { color: var(--warn); }
+
+.berextra { display: grid; gap: 8px; }
+.reader { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; font-size: 13px; }
+.reader input { width: 92px; letter-spacing: 0; font-size: 13px; padding: 4px 8px; }
+.tablewrap { overflow-x: auto; }
+table.cmp { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.cmp th, table.cmp td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+table.cmp th { font: 500 12px var(--f-mono); color: var(--muted); }
+table.cmp td.num { font-family: var(--f-mono); }
+.sw { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+
+details.work { border: 1px solid var(--line); border-radius: 12px; background: var(--panel); padding: 0 16px; }
+details.work summary { cursor: pointer; padding: 11px 0; font: 500 12px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+details.work[open] summary { border-bottom: 1px solid var(--grid); }
+.eq .line { display: grid; grid-template-columns: 140px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--grid); }
+.eq .what { font-size: 12.5px; color: var(--muted); padding-top: 2px; }
+.eq .math { font: 13px var(--f-mono); overflow-x: auto; }
+.eq .res { color: var(--psk); font-weight: 600; }
+.assume { margin: 10px 0 14px; padding-left: 18px; display: grid; gap: 5px; font-size: 13px; color: var(--ink); }
+.assume li { max-width: 90ch; }
+
+/* footer + modal */
+.modal { position: fixed; inset: 0; background: rgba(31, 41, 51, .35); display: grid; place-items: center; padding: 20px; z-index: 50; }
+.sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; max-width: 640px; width: 100%; max-height: 86vh; overflow-y: auto; padding: 22px 26px; display: grid; gap: 12px; position: relative; }
+.sheet h2 { margin: 0; font: 600 18px var(--f-display); font-stretch: 90%; }
+.sheet h3 { margin: 8px 0 0; font: 500 11px var(--f-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.sheet p { margin: 0; font-size: 13.5px; }
+.sheet .x { position: absolute; top: 12px; right: 14px; }
+
+/* narrow screens: stack and let the page scroll */
+@media (max-width: 1100px) { .shell { grid-template-columns: 250px minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  html, body { height: auto; }
+  .app { height: auto; display: block; }
+  .shell { display: block; }
+  .rail { overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); padding: 18px 0; }
+  .main { overflow: visible; padding: 16px 0; }
+  .stage.two { height: auto; grid-template-rows: none; }
+  #cvTime { height: 420px; }
+  .lower { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; }
+  #cvSpec { height: 300px; } #cvConst { height: 340px; }
+  .stage.one { height: 440px; }
+}
+@media (max-width: 560px) { .eq .line { grid-template-columns: minmax(0, 1fr); gap: 2px; } }
+.who { display: flex; align-items: center; gap: 14px; }
+@media (max-width: 560px) { .topbar { flex-wrap: wrap; } .who { gap: 10px; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="app">
+  <header class="topbar">
+    <h1>Shift Keying <b>Lab</b></h1>
+    <div class="who"><span class="cap">WCM555 · Saw Eaindray Thant</span><button class="btn" id="refsBtn" type="button">References</button></div>
+  </header>
+
+  <div class="shell">
+    <aside class="rail" aria-label="Controls">
+      <section class="sec">
+        <div class="cap">Scheme</div>
+        <div class="picks" id="picks" role="group" aria-label="Scheme">
+          <button type="button" class="pick" data-k="ASK"><span class="n">ASK</span><span class="s">amplitude</span></button>
+          <button type="button" class="pick" data-k="FSK"><span class="n">FSK</span><span class="s">frequency</span></button>
+          <button type="button" class="pick" data-k="PSK"><span class="n">PSK</span><span class="s">phase</span></button>
+          <button type="button" class="pick" data-k="QAM"><span class="n">16-QAM</span><span class="s">amp. + phase</span></button>
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="cap">Signal</div>
+        <div class="ctl">
+          <div class="row"><label for="bits">Bits</label></div>
+          <div class="bitsbox"><input id="bits" value="10100110" maxlength="16" inputmode="numeric" spellcheck="false" autocomplete="off"><button class="btn" id="rand" type="button">Random</button></div>
+          <span class="hint">16-QAM reads 4 bits at a time; short patterns are padded with 0s.</span>
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="rb">Bit rate R<sub>b</sub></label><output id="rbOut"></output></div>
+          <input type="range" id="rb" min="0.5" max="5" step="0.5" value="1">
+        </div>
+      </section>
+
+      <section class="sec">
+        <div class="cap">Channel</div>
+        <div class="ctl">
+          <div class="row"><label for="eb">E<sub>b</sub>/N<sub>0</sub> (signal quality)</label><output id="ebOut"></output></div>
+          <input type="range" id="eb" min="0" max="18" step="0.5" value="8">
+          <span class="hint">Higher means a cleaner signal, lower means more noise</span>
+        </div>
+        <label class="check"><input type="checkbox" id="showNoise"> Show the noise (waveforms, spectrum, I-Q)</label>
+      </section>
+
+      <section class="sec" id="playback">
+        <div class="cap">Playback</div>
+        <div class="ctl">
+          <div class="row"><label for="speed">Speed</label><output id="speedOut"></output></div>
+          <input type="range" id="speed" min="0.25" max="3" step="0.25" value="1">
+        </div>
+        <div class="pair"><button class="btn solid" id="playBtn" type="button">Pause</button><button class="btn" id="restartBtn" type="button">Restart</button></div>
+      </section>
+
+      <details class="fold">
+        <summary>More settings</summary>
+        <div class="foldbody">
+          <div class="ctl">
+            <div class="row"><label for="fc">Carrier f<sub>c</sub></label><output id="fcOut"></output></div>
+            <input type="range" id="fc" min="4" max="12" step="1" value="4">
+            <span class="hint" id="fcHint"></span>
+          </div>
+          <div class="ctl" id="fskRow">
+            <div class="row"><label for="dfn">FSK spacing f<sub>1</sub> − f<sub>0</sub></label><output id="dfOut"></output></div>
+            <input type="range" id="dfn" min="1" max="8" step="1" value="4">
+            <span class="hint" id="dfHint"></span>
+          </div>
+          <div class="ctl" id="askRow">
+            <div class="row"><label for="m">ASK modulation index m</label><output id="mOut"></output></div>
+            <input type="range" id="m" min="0.2" max="1" step="0.05" value="1">
+            <span class="hint">m = 1 is on-off keying (OOK)</span>
+          </div>
+        </div>
+      </details>
+
+      <details class="fold">
+        <summary>What do these terms mean?</summary>
+        <div class="foldbody terms">
+          <span><b>Carrier</b>: the steady wave a radio changes to carry bits.</span>
+          <span><b>Bandwidth</b>: frequency space used (kHz). Less is better.</span>
+          <span><b>BER</b>: fraction of received bits that are wrong. Lower is better.</span>
+          <span><b>E<sub>b</sub>/N<sub>0</sub></b>: signal vs noise per bit (dB). Higher is cleaner.</span>
+        </div>
+      </details>
+    </aside>
+
+    <main class="main">
+      <div class="sline">
+        <span class="pill" id="pill"></span><span class="sdesc" id="sdesc"></span>
+        <div class="toggle" id="views" role="group" aria-label="View">
+          <button type="button" data-v="wave">Waveform + spectrum + I-Q</button><button type="button" data-v="ber">Bit errors</button>
+        </div>
+      </div>
+
+      <div class="stagehead"><span class="cap" id="stageTitle"></span></div>
+      <div class="stage two" id="stage">
+        <canvas id="cvTime" role="img" aria-label="Bit stream and the ASK, FSK, PSK and 16-QAM waveforms versus time"></canvas>
+        <div class="lower" id="lower"><canvas id="cvSpec" role="img" aria-label="Power spectrum of the selected scheme with bandwidth markers"></canvas><canvas id="cvConst" role="img" aria-label="I-Q constellation of the selected scheme with the symbols the receiver sees"></canvas></div>
+        <canvas id="cvBer" role="img" aria-label="Bit error rate versus Eb/N0 for ASK, FSK, PSK and 16-QAM" hidden></canvas>
+      </div>
+      <p class="note" id="stageNote"></p>
+
+      <div class="berextra" id="berExtra" hidden>
+        <div class="reader">
+          <label for="target">Read the plot at BER =</label><input id="target" value="4e-6" spellcheck="false">
+        </div>
+        <div class="tablewrap"><table class="cmp" id="cmp"></table></div>
+      </div>
+
+      <details class="work">
+        <summary>Equations with your numbers, and assumptions</summary>
+        <div class="eq" id="working"></div>
+        <ul class="assume">
+          <li>Carrier amplitude is 1 V into 1 Ω for every scheme. E<sub>b</sub> is the energy of one bit. ASK is compared at the same peak amplitude as the others, so on average on-off ASK uses half the energy per bit. That is why it sits about 3 dB behind FSK, the same gap the Lecture 7 graph shows. At equal average energy it would match FSK. PSK, FSK and 16-QAM use the same average power.</li>
+          <li>Noise is white Gaussian (AWGN) and the receiver is coherent: it knows the carrier frequency and phase exactly.</li>
+          <li>FSK tone spacing is a multiple of R<sub>b</sub>/2, so the two tones are orthogonal. PSK here is binary PSK: two phases, 0° and 180°. 16-QAM is Gray coded: 2 bits set the I level and 2 bits set the Q level.</li>
+          <li>Bits are rectangular pulses, so the spectrum is sinc-shaped. BW<sub>NOM</sub> is the main lobe, first null to first null. It holds about 90 % of the power for PSK and 16-QAM, and more for ASK and FSK. The spikes (carrier, FSK tones) are lines, so their height on the plot depends on how finely the spectrum is calculated.</li>
+          <li>The BER formulas and the definition of E<sub>b</sub>/N<sub>0</sub> are standard communications theory, not from the course slides, which only show BER graphs. The curves match the Lecture 7 graph values (slide 9).</li>
+          <li>The noise tick box adds noise to the waveforms, puts a white-noise floor (N<sub>0</sub>) on the spectrum, and scatters the I-Q constellation. The I-Q axes are normalised so that √E<sub>b</sub> = 1 (16-QAM: average symbol energy 1), and the receiver picks the nearest ideal symbol.</li>
+          <li>"BER simulated" sends 200 000 random bits through the noisy channel and counts the errors: BER = bit errors / total bits (Lecture 6).</li>
+        </ul>
+      </details>
+    </main>
+  </div>
+
+</div>
+
+<div class="modal" id="refs" hidden>
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="refsT">
+    <button class="btn x" id="refsClose" type="button" aria-label="Close">Close</button>
+    <h2 id="refsT">References</h2>
+    <h3>Course material</h3>
+    <p>[1] C. Rodgers, "Digital Modulation," WCM555 Wireless Communications &amp; Microcontrollers, Handout 7, lecture slides.</p>
+    <p>[2] C. Rodgers, "Multi-level Coding &amp; Quadrature Amplitude Modulation (QAM)," WCM555, Handout 8, lecture slides.</p>
+    <p>[3] C. Rodgers, "SNR, Channel Capacity &amp; Bit Error Ratio (BER)," WCM555, Handout 6, lecture slides (BER = bit errors / total bits).</p>
+    <p class="hint">Used for: ASK/FSK/PSK definitions, BW<sub>NYQ</sub> and BW<sub>NOM</sub> formulas, FSK and PSK spectra, bits vs symbols and 16-QAM, and the BER vs E<sub>b</sub>/N<sub>0</sub> exercise on slide 9 (PSK 10 dB and FSK 13 dB for 4×10⁻⁶).</p>
+    <h3>AI tools used in development</h3>
+    <p>[4] Anthropic, "Claude," large language model used through Claude Code to help write the HTML, CSS and JavaScript for this tool: waveform generation, the spectrum calculation, the Q-function BER curves and the Monte Carlo simulation.</p>
+    <h3>Note on AI use</h3>
+    <p>This tool was built by Saw Eaindray Thant for the WCM555 Practice Tool Building Assignment. The code was generated and refined from student-directed prompts using Claude. The bit-rate and bandwidth equations come from the course material [1][2][3]. The BER formulas (the Q-function) come from standard AWGN detection theory, which is outside the course slides: the lectures only show BER graphs. The tool's numbers were checked against the slide 9 exercise answers and against its own bit-by-bit simulation, which agrees with the theory curves. All content has been reviewed by the student for correctness.</p>
+  </div>
+</div>
+
+<script>
+/*CORE*/
+</script>
+<script>
+/*APP*/
+</script>
